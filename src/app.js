@@ -88,14 +88,14 @@ app.use(express.static(publicDir, { extensions: ['html'] }));
 
 app.use(csrfErrorHandler);
 
-// eslint-disable-next-line no-unused-vars
-app.use((err, req, res, next) => {
-  console.error(err);
-  if (req.path.startsWith('/api/')) {
-    return res.status(500).json({ error: 'Erreur serveur.' });
-  }
-  return res.status(500).send('Erreur serveur.');
-});
+// // eslint-disable-next-line no-unused-vars
+// app.use((err, req, res, next) => {
+//   console.error(err);
+//   if (req.path.startsWith('/api/')) {
+//     return res.status(500).json({ error: 'Erreur serveur.' });
+//   }
+//   return res.status(500).send('Erreur serveur.');
+// });
 
 app.use((req, res) => {
   if (req.path.startsWith('/api/')) {
