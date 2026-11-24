@@ -1,30 +1,30 @@
-  #!/usr/bin/env bash
-  # Linux/macOS launcher for the bash scripts in scripts/ (the Windows equivalent is fabrics.cmd).
-  #
-  #   ./fabrics                    same as "./fabrics start"
-  #   ./fabrics start [docker|check|stop]
-  #   ./fabrics test  [unit|smoke] [--write]
-  #   ./fabrics deploy [setup|status|logs|down|ssh]
-  #
-  # To call it as "fabrics" from anywhere: ln -s "$PWD/fabrics" ~/.local/bin/fabrics
-  set -euo pipefail
+#!/usr/bin/env bash
+# Linux/macOS launcher for the bash scripts in scripts/ (the Windows equivalent is fabrics.cmd).
+#
+#   ./fabrics                    same as "./fabrics start"
+#   ./fabrics start [docker|check|stop]
+#   ./fabrics test  [unit|smoke] [--write]
+#   ./fabrics deploy [setup|status|logs|down|ssh]
+#
+# To call it as "fabrics" from anywhere: ln -s "$PWD/fabrics" ~/.local/bin/fabrics
+set -euo pipefail
 
-  # Follow a symlink (e.g. ~/.local/bin/fabrics) back to the project root.
-  ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+# Follow a symlink (e.g. ~/.local/bin/fabrics) back to the project root.
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 
-  SCRIPT="${1:-start}"
-  [ $# -gt 0 ] && shift
+SCRIPT="${1:-start}"
+[ $# -gt 0 ] && shift
 
-  case "$SCRIPT" in
-    start | test | deploy) ;;
-    -h | --help | help)
-      sed -n '2,9p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
-      exit 0
-      ;;
-    *)
-      echo "Uso: fabrics [start|test|deploy] [opcoes]" >&2
-      exit 1
-      ;;
-  esac
+case "$SCRIPT" in
+  start | test | deploy) ;;
+  -h | --help | help)
+    sed -n '2,9p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    exit 0
+    ;;
+  *)
+    echo "Uso: fabrics [start|test|deploy] [opcoes]" >&2
+    exit 1
+    ;;
+esac
 
-  exec bash "$ROOT/scripts/$SCRIPT.sh" "$@"
+exec bash "$ROOT/scripts/$SCRIPT.sh" "$@"
