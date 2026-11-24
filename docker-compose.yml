@@ -1,0 +1,35 @@
+# Backend microservices. Only the gateway is published to the host;
+# content, contact and email talk to each other over the internal network by HTTP.
+x-service: &service
+  env_file: .env
+  restart: unless-stopped
+  environment: &service-env
+    CONTENT_SERVICE_URL: http://content:4001
+    CONTACT_SERVICE_URL: http://contact:4002
+    EMAIL_SERVICE_URL: http://email:4003
+    FABRICATION_SERVICE_URL: http://fabrication:4004
+
+services:
+  gateway:
+    <<: *service
+    build: { context: ., dockerfile: services/Dockerfile, args: { SERVICE: gateway } }
+    ports: ["4000:4000"]
+    depends_on: [content, contact, fabrication]
+
+  content:
+    <<: *service
+    build: { context: ., dockerfile: services/Dockerfile, args: { SERVICE: content } }
+
+  contact:
+    <<: *service
+    build: { context: ., dockerfile: services/Dockerfile, args: { SERVICE: contact } }
+    depends_on: [email]
+
+  fabrication:
+    <<: *service
+    build: { context: ., dockerfile: services/Dockerfile, args: { SERVICE: fabrication } }
+    depends_on: [email]
+
+  email:
+    <<: *service
+    build: { context: ., dockerfile: services/Dockerfile, args: { SERVICE: email } }

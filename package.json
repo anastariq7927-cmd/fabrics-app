@@ -1,29 +1,20 @@
 {
-  "name": "fabrics-app",
-  "version": "1.0.0",
-  "description": "Site FabriCS avec backend d'administration des actualites",
+  "name": "fabrics-cs",
   "private": true,
-  "main": "src/server.js",
+  "version": "2.0.0",
+  "type": "module",
+  "workspaces": [
+    "frontend",
+    "packages/*",
+    "services/*"
+  ],
   "scripts": {
-    "start": "node src/server.js",
-    "dev": "node --watch src/server.js",
-    "create-staff": "node scripts/create-staff.js"
+    "dev": "concurrently -n gateway,content,contact,email,fab,web -c magenta,cyan,green,yellow,red,blue \"npm run dev -w services/gateway\" \"npm run dev -w services/content\" \"npm run dev -w services/contact\" \"npm run dev -w services/email\" \"npm run dev -w services/fabrication\" \"npm run dev -w frontend\"",
+    "dev:services": "concurrently -n gateway,content,contact,email,fab \"npm run dev -w services/gateway\" \"npm run dev -w services/content\" \"npm run dev -w services/contact\" \"npm run dev -w services/email\" \"npm run dev -w services/fabrication\"",
+    "build": "npm run build -w frontend",
+    "test": "npm test -w services/fabrication"
   },
-  "engines": {
-    "node": ">=22.5.0"
-  },
-  "dependencies": {
-    "bcryptjs": "^2.4.3",
-    "cookie-parser": "^1.4.7",
-    "csrf-csrf": "^4.0.3",
-    "dotenv": "^16.4.5",
-    "express": "^4.21.1",
-    "express-rate-limit": "^7.4.1",
-    "express-session": "^1.18.1",
-    "express-validator": "^7.2.0",
-    "helmet": "^8.0.0",
-    "multer": "^2.2.0",
-    "nodemailer": "^9.0.3",
-    "sharp": "^0.33.5"
+  "devDependencies": {
+    "concurrently": "^9.1.2"
   }
 }

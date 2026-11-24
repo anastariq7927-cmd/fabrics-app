@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "supabase": {
+      "type": "http",
+      "url": "https://mcp.supabase.com/mcp"
+    },
+    "token-optimizer": {
+      "command": "npx",
+      "args": ["-y", "@ooples/token-optimizer-mcp"]
+    },
+    "email-smtp-imap": {
+      "command": "npx",
+      "args": ["-y", "email-smtp-imap-mcp"]
+    }
+  }
+}

@@ -1,0 +1,29 @@
+# Production override, used by scripts/deploy.sh:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+# Caddy is the only public entry point: it serves the built frontend (web/) and proxies
+# /api to the gateway, with automatic HTTPS for $DOMAIN.
+services:
+  gateway:
+    # Not exposed on the host any more; Caddy reaches it on the internal network.
+    ports: !reset []
+
+  web:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    depends_on: [gateway]
+    environment:
+      # Empty or missing DOMAIN → plain HTTP on :80 (Caddy's own {$VAR:default} ignores empty values).
+      SITE_ADDRESS: ${DOMAIN:-:80}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./web:/srv:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:

@@ -1,205 +1,142 @@
-# FabriCS — site + backend actualites
+# FabriCS 2.0
 
-Application Node.js/Express qui sert le site FabriCS (fichiers statiques dans
-`public/`) et ajoute une zone d'administration protegee (`/admin`) permettant
-au staff de gerer les actualites, sans toucher au code.
+Nova versão do site da [FabriCS](https://fabrics.rezo-rm.fr), associação de engenheiros de Metz.
+Front-end em **Vite + React (JSX)** com visual inspirado na Apple, ícones **Font Awesome**, banco **Postgres no Supabase** e backend em **microserviços Node/Express que conversam por HTTP**. O site existe em francês, inglês e português.
 
-Necessite **Node.js 22.5+** (utilise le module integre `node:sqlite`, pas de
-base de donnees externe a installer ni de compilation native requise pour la
-base de donnees).
+## Arquitetura
 
-## Deploiement rapide sur une VM (Makefile)
+```
+Navegador ──HTTP──▶ gateway :4000 ──HTTP──▶ content :4001 ──▶ Supabase (Postgres + RLS)
+  (Vite :5173)         │  CORS, helmet,      ├─▶ contact :4002 ──▶ Supabase
+                       │  rate limit, auth   │        └──HTTP──▶ email :4003 ──▶ SMTP
+                       └─ /api/health agrega o status de todos
+```
 
-Une fois Node.js 22.5+ installe sur la VM (voir "Prerequis systeme" plus bas) :
+| Serviço | Porta | Responsabilidade |
+|---|---|---|
+| `services/gateway` | 4000 | Única porta pública. Proxy para os serviços, CORS, `helmet`, rate limit no formulário, valida o JWT do Supabase e checa se é admin |
+| `services/content` | 4001 | Intenções (serviços), actualités, projetos, parceiros; CRUD admin de actualités e caixa de mensagens |
+| `services/contact` | 4002 | Recebe o formulário "Rejoindre", grava em `contact_messages` e pede ao serviço de email para avisar a equipe |
+| `services/email` | 4003 | **Único** ponto que fala SMTP (nodemailer). Interno, protegido por `INTERNAL_TOKEN` |
+| `services/fabrication` | 4004 | Pedidos de fabricação (impressão 3D, laser, CAD, eletrônica): upload para o Storage, estimativa, acompanhamento por token, triagem e orçamento da equipe |
+| `packages/shared` | – | Clientes Supabase, validação zod, `createService()` (health + tratamento de erros) |
+
+Rotas públicas da API (via gateway):
+
+- `GET /api/content/intentions?locale=fr|en|pt`
+- `GET /api/content/news?locale=&limit=`, `GET /api/content/news/:slug`
+- `GET /api/content/projects/cshell`, `GET /api/content/partners`
+- `POST /api/contact`: `{ name, email, intention, message, locale }`
+- `GET /api/fabrication/catalog?locale=`, `POST /api/fabrication/requests` (multipart: `data` em JSON + `file`), `GET /api/fabrication/track/:token`
+- `GET /api/auth/me`, `/api/admin/*` e `/api/admin/fabrication/*` (exigem `Authorization: Bearer <jwt>`)
+
+## Módulo de fabricação
+
+O layout segue as telas do Stitch, mas com o design do site.
+
+| Página | Rota | Função |
+|---|---|---|
+| Catálogo e pedido | `/:lang/fabrication` | Escolha do serviço, 4 etapas (perfil, arquivo, parâmetros, consentimentos) e estimativa ao vivo |
+| Acompanhamento | `/:lang/fabrication/suivi/:token` | Etapas, linha do tempo, orçamento e botão de pagamento HelloAsso |
+| Fila | `/admin/fabrication` | KPIs, busca, filtros e tabela de pedidos |
+| Inspeção e orçamento | `/admin/fabrication/:id` | Visualizador 3D, download, montagem do orçamento, mudança de status, pedido de esclarecimento e recusa |
+
+- **Análise 3D no navegador:** arquivos STL, OBJ e 3MF são lidos com three.js. O site mede as dimensões, o volume e os triângulos e verifica se a malha é fechada. STEP é aceito, mas não tem pré-visualização.
+- **Preço:** fica em `services/fabrication/src/pricing.js` (testado com `npm test`). Materiais, preços e descontos estão nas tabelas `fab_materials` e `fab_settings`. **Os preços do seed são provisórios: ajuste antes de abrir ao público.**
+- **Pagamento:** a equipe cola o link HelloAsso no orçamento e marca o pedido como pago manualmente.
+- **Arquivos:** ficam no bucket privado `fab-files`, com limite de 50 MB. Só o serviço e os admins conseguem lê-los.
+
+## Banco de dados
+
+Todo o schema está em [`supabase/migrations/`](supabase/migrations): tabelas, RLS e seed com os textos do site atual nos três idiomas. Os textos traduzíveis ficam em colunas `jsonb` no formato `{"fr": "...", "en": "...", "pt": "..."}`.
+
+Projeto Supabase: `fabrics-cs` (`ircemdwccpjfrpyikwds`, região eu-west-3).
+
+## Como rodar
 
 ```bash
-git pull
-make install                       # npm ci, genere .env avec des secrets
-                                   # aleatoires, cree un compte admin
-                                   # (identifiants affiches une seule fois
-                                   # dans le terminal)
-make                               # installe et demarre un service systemd
-                                   # fabrics-app, actif au demarrage de la VM
-make nginx DOMAIN=ton-domaine.fr   # nginx + HTTPS (Let's Encrypt) devant l'app,
-                                   # et publie le site sur https://ton-domaine.fr
+bash scripts/start.sh            # confere o ambiente, instala dependências e sobe front + 5 serviços
+bash scripts/start.sh docker     # backend em Docker, front com Vite
+bash scripts/start.sh check      # só confere Node, .env e portas
+bash scripts/start.sh stop       # para os containers
 ```
 
-Ces trois cibles sont idempotentes : les relancer sur une VM deja installee
-ne recree pas les secrets, le compte staff ni le certificat existants.
-Commandes utiles ensuite : `make status`, `make logs`, `make restart`.
+Na primeira vez o script cria o `.env` a partir do `.env.example` e diz o que falta preencher. O `INTERNAL_TOKEN` é gerado sozinho. Depois é só abrir http://localhost:5173.
 
-**Le serveur Node ecoute uniquement sur `127.0.0.1`** : il n'est jamais
-expose directement a Internet. Tant que `make nginx` n'a pas ete lance, le
-site n'est donc PAS joignable via le domaine - c'est normal. `make nginx`
-place nginx + certbot devant, obtient le certificat TLS pour le domaine,
-puis bascule l'app en mode HTTPS (`TRUST_PROXY`/`COOKIE_SECURE`) pour que la
-connexion admin passe **obligatoirement par HTTPS**.
+No Windows, rode pelo Git Bash.
 
-- Le **domaine** est le seul argument requis (certbot doit savoir pour quel
-  nom demander le certificat ; la VM ne peut pas le deviner). Prerequis : un
-  enregistrement DNS **A** du domaine vers l'IP publique de la VM.
-- Email optionnel mais recommande (avis d'expiration Let's Encrypt) :
-  `make nginx DOMAIN=ton-domaine.fr EMAIL=toi@exemple.fr`.
-
-Pour une verification en local sur la VM avant `make nginx`, un tunnel SSH :
-`ssh -L 8080:127.0.0.1:<PORT> user@ip-vm`, puis `http://localhost:8080`.
-
-## Deploiement continu (mise a jour auto sur push)
-
-Pour que chaque push sur `main` mette a jour le site tout seul, activer le
-timer systemd de deploiement (une seule fois, sur la VM) :
+### Testar
 
 ```bash
-make cd-install
+bash scripts/test.sh            # testes unitários + build do front + smoke tests (sobe a stack se precisar e desliga no fim)
+bash scripts/test.sh unit       # só as regras de preço
+bash scripts/test.sh smoke      # só os smoke tests, contra o que já está rodando
+bash scripts/test.sh --write    # também cria uma mensagem de contato e um pedido de impressão 3D reais
 ```
 
-A partir de la, un timer verifie le depot **toutes les 60 s** : des qu'un
-nouveau commit apparait sur la branche suivie (`main`), il fait un
-`git reset --hard` sur `origin/main`, relance `npm ci` **uniquement si les
-dependances ont change**, puis redemarre le service. Sinon il ne fait rien.
-Latence : jusqu'a ~1 min apres le push.
+Os smoke tests cobrem:
+- o health dos 5 serviços e o conteúdo nos três idiomas;
+- o catálogo de fabricação;
+- as proteções: admin sem login → 401, dados inválidos → 400, serviço de email sem token interno → 401;
+- as páginas do front.
 
-- Aucun secret ni port entrant : la VM tire les changements (elle utilise le
-  token deja en cache cote depot), rien n'est pousse depuis l'exterieur.
-- Le `git reset --hard` ecrase les modifications locales des fichiers
-  **suivis** ; le `.env`, la base `data/` et `public/uploads/` sont ignores
-  par git, donc jamais touches.
-- Suivi : `make cd-status` (prochaine verif + resultat de la derniere) et
-  `make cd-logs`. Desactivation : `make cd-disable`.
+Por padrão eles **não gravam nada**. Com `--write`, criam registros "Smoke Test" no Supabase e conferem a estimativa e o acompanhamento.
 
-## Installation locale
+O script termina com código 1 se algo falhar, então serve também para CI. Para testar o site em produção: `API_URL=https://seu-dominio/api WEB_URL=https://seu-dominio bash scripts/test.sh smoke`.
 
-```bash
-cd fabrics-app
-npm install
-cp .env.example .env
-# Editer .env : generer SESSION_SECRET et CSRF_SECRET avec :
-node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+Sem credenciais SMTP, o serviço de email apenas **registra** a mensagem no console em vez de enviar, o que basta para desenvolver.
 
-npm run create-staff   # cree le premier compte staff (invite interactive)
-npm run dev             # demarre sur http://127.0.0.1:3000
+### Criar um admin
+
+1. Supabase Dashboard → Authentication → Users → *Add user* (email + senha).
+2. No SQL editor: `insert into public.admins (user_id) select id from auth.users where email = 'voce@exemplo.com';`
+3. Entre em http://localhost:5173/admin.
+
+## Colocar no ar (deploy via SSH)
+
+Serve para qualquer servidor Linux com acesso SSH por chave (Ubuntu/Debian recomendados). No servidor, o Caddy é a única porta pública:
+- serve o front já compilado;
+- encaminha `/api` para o gateway;
+- emite o certificado HTTPS sozinho.
+
+Os microserviços rodam em Docker, na rede interna.
+
+```
+Internet ─▶ Caddy :443 ─┬─ /        → frontend (web/)
+                        └─ /api/*   → gateway ─▶ content · contact · email · fabrication
 ```
 
-## Deploiement sur un VPS (Debian/Ubuntu)
+1. Aponte o domínio (registro A/AAAA) para o IP do servidor e garanta que `ssh usuario@servidor` entra sem senha (`ssh-copy-id usuario@servidor`).
+2. Configure o deploy:
+   ```bash
+   cp deploy/deploy.env.example deploy/deploy.env   # host, usuário, pasta e domínio
+   ```
+3. Prepare o servidor. Isso instala o Docker e libera as portas 80/443 no `ufw`:
+   ```bash
+   bash scripts/deploy.sh setup
+   ```
+4. Publique:
+   ```bash
+   bash scripts/deploy.sh
+   ```
+   - Na primeira vez, o script cria o `.env.production` a partir do seu `.env`, já com as URLs públicas (`VITE_API_URL=/api`, `PUBLIC_SITE_URL`, `CORS_ORIGINS`). Revise o arquivo, principalmente o SMTP, e rode de novo.
+   - A partir daí, cada execução compila o front, envia o código, reconstrói os containers e testa o `/api/health`.
 
-### 1. Prerequis systeme
+Outros comandos: `bash scripts/deploy.sh status`, `logs [serviço]`, `down` e `ssh`.
 
-```bash
-sudo apt update && sudo apt install -y nginx
-curl -fsSL https://deb.nodesource.com/setup_22.x | sudo bash -
-sudo apt install -y nodejs
-sudo apt install -y certbot python3-certbot-nginx ufw
+O banco continua no Supabase. Mudanças de schema vão por migration em `supabase/migrations/`, não pelo deploy.
+
+`deploy/deploy.env` e `.env.production` ficam fora do git.
+
+## Estrutura do front-end
+
 ```
-
-### 2. Utilisateur dedie et code de l'application
-
-```bash
-sudo adduser --system --group --home /opt/fabrics-app fabrics
-sudo -u fabrics git clone <votre-repo> /opt/fabrics-app
-cd /opt/fabrics-app
-sudo -u fabrics npm ci --omit=dev
-sudo -u fabrics cp .env.example .env
-sudo -u fabrics nano .env   # renseigner SESSION_SECRET, CSRF_SECRET, COOKIE_DOMAIN,
-                            # PORT=3000, TRUST_PROXY=true, COOKIE_SECURE=true
-sudo -u fabrics npm run create-staff
-```
-
-### 3. Service systemd
-
-Creer `/etc/systemd/system/fabrics-app.service` :
-
-```ini
-[Unit]
-Description=FabriCS app
-After=network.target
-
-[Service]
-Type=simple
-User=fabrics
-Group=fabrics
-WorkingDirectory=/opt/fabrics-app
-ExecStart=/usr/bin/node src/server.js
-Restart=on-failure
-EnvironmentFile=/opt/fabrics-app/.env
-
-# Durcissement
-NoNewPrivileges=true
-ProtectSystem=strict
-ProtectHome=true
-ReadWritePaths=/opt/fabrics-app/data /opt/fabrics-app/public/uploads
-PrivateTmp=true
-
-[Install]
-WantedBy=multi-user.target
-```
-
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable --now fabrics-app
-sudo systemctl status fabrics-app
-```
-
-### 4. nginx en reverse proxy (TLS)
-
-Creer `/etc/nginx/sites-available/fabrics-app` :
-
-```nginx
-server {
-    listen 80;
-    server_name votre-domaine.fr;
-
-    location / {
-        proxy_pass http://127.0.0.1:3000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    }
-}
-```
-
-```bash
-sudo ln -s /etc/nginx/sites-available/fabrics-app /etc/nginx/sites-enabled/
-sudo nginx -t && sudo systemctl reload nginx
-sudo certbot --nginx -d votre-domaine.fr   # active HTTPS + redirection auto
-```
-
-Une fois HTTPS actif, verifier dans `.env` : `TRUST_PROXY=true` et
-`COOKIE_SECURE=true`, puis `sudo systemctl restart fabrics-app`.
-
-### 5. Pare-feu
-
-```bash
-sudo ufw allow OpenSSH
-sudo ufw allow 'Nginx Full'
-sudo ufw enable
-```
-
-Node n'ecoute que sur `127.0.0.1` : il n'est jamais expose directement a
-Internet, seul nginx (80/443) l'est.
-
-## Sauvegardes
-
-Sauvegarder regulierement (cron) :
-- `data/app.db` et `data/sessions.db` (base SQLite)
-- `public/uploads/` (images des actualites)
-
-```bash
-0 3 * * * tar -czf /var/backups/fabrics-$(date +\%F).tar.gz -C /opt/fabrics-app data public/uploads
-```
-
-## Ajouter un compte staff supplementaire
-
-```bash
-cd /opt/fabrics-app
-sudo -u fabrics npm run create-staff
-```
-
-Il n'existe volontairement aucun endpoint web d'inscription : la creation
-d'un compte staff necessite un acces shell au serveur.
-
-## Mise a jour des dependances
-
-```bash
-npm audit
-npm outdated
+frontend/src/
+  api/client.js        chamadas ao gateway
+  i18n/                fr.json, en.json, pt.json + detecção de idioma
+  styles/tokens.css    cores, raios, sombras (claro/escuro)
+  styles/global.css    componentes (nav translúcida, hero, tiles, cards…)
+  components/          Nav, Footer, Layout, Reveal (animação no scroll), Blocks
+  pages/               Home, Services, News, NewsDetail, CShell, Join
+  admin/               Login, actualités, mensagens
 ```

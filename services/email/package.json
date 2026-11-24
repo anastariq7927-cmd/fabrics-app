@@ -1,0 +1,16 @@
+{
+  "name": "@fabrics/email-service",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js"
+  },
+  "dependencies": {
+    "@fabrics/shared": "*",
+    "nodemailer": "^6.10.0",
+    "zod": "^3.24.2"
+  }
+}
