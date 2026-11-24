@@ -5,7 +5,7 @@ import multer from 'multer';
 import { z } from 'zod';
 import { asyncHandler, supabaseService, resolveLocale, HttpError, LOCALES, t } from '@fabrics/shared';
 import { loadCatalog, localizeCatalog } from './catalog.js';
-import { estimate } from './pricing.js';
+import { estimate, tierFor, PROFILES, FRAMES } from './pricing.js';
 import { notifyClient, notifyTeam } from './notify.js';
 
 export const MAX_FILE_BYTES = 50 * 1024 * 1024;
@@ -25,7 +25,13 @@ const optionalText = (max) =>
 
 const requestSchema = z.object({
   service_key: z.string(),
-  tier: z.enum(['etudiant', 'association', 'externe']),
+  // The price tier is derived from profile + project_frame (tierFor); a client-sent tier is ignored.
+  profile: z.enum(PROFILES),
+  profile_other: optionalText(160),
+  project_frame: z.enum(FRAMES).optional().nullable(),
+  frame_other: optionalText(300),
+  association_name: optionalText(160),
+  service_other: optionalText(300),
   name: z.string().trim().min(1).max(120),
   email: z.string().trim().email().max(254),
   phone: optionalText(40),
@@ -49,6 +55,18 @@ const requestSchema = z.object({
     .optional()
     .nullable(),
 });
+
+// Fields that become required depending on other answers (same rules as the form).
+function contextErrors(input) {
+  const errors = {};
+  if (input.profile === 'autre' && !input.profile_other) errors.profile_other = ['Required when the profile is "autre"'];
+  if (input.profile !== 'entreprise_collectivite') {
+    if (!input.project_frame) errors.project_frame = ['Required'];
+    if (input.project_frame === 'autre' && !input.frame_other) errors.frame_other = ['Required when the frame is "autre"'];
+  }
+  if (input.service_key === 'conseil' && !input.service_other) errors.service_other = ['Describe the service or advice you need'];
+  return errors;
+}
 
 publicRouter.get(
   '/catalog',
@@ -82,6 +100,12 @@ publicRouter.post(
     const parsed = requestSchema.safeParse(raw);
     if (!parsed.success) throw new HttpError(400, 'Invalid request', parsed.error.flatten().fieldErrors);
     const input = parsed.data;
+    const missing = contextErrors(input);
+    if (Object.keys(missing).length) throw new HttpError(400, 'Invalid request', missing);
+    // Companies have no frame; drop the fields that do not apply to the chosen answers.
+    const isCompany = input.profile === 'entreprise_collectivite';
+    const frame = isCompany ? null : input.project_frame;
+    const tier = tierFor(input.profile, frame);
 
     const catalog = await loadCatalog();
     const service = catalog.services.find((s) => s.key === input.service_key);
@@ -113,7 +137,7 @@ publicRouter.post(
     }
 
     const analysis = service.has_estimator ? input.analysis : null;
-    const discountRate = Number(catalog.settings.discounts[input.tier] ?? 0);
+    const discountRate = Number(catalog.settings.discounts[tier] ?? 0);
     const est =
       analysis && material
         ? estimate({
@@ -129,7 +153,13 @@ publicRouter.post(
     const row = {
       id,
       service_key: service.key,
-      tier: input.tier,
+      tier,
+      profile: input.profile,
+      profile_other: input.profile === 'autre' ? input.profile_other : null,
+      project_frame: frame,
+      frame_other: frame === 'autre' ? input.frame_other : null,
+      association_name: frame === 'associatif' ? input.association_name : null,
+      service_other: service.key === 'conseil' ? input.service_other : null,
       name: input.name,
       email: input.email,
       phone: input.phone,

@@ -93,7 +93,11 @@
       "Un accès privilégié aux projets et événements de FabriCS."
     ],
     "contactEyebrow": "Nous contacter",
-    "contactTitle": "Une question, un projet à proposer ?"
+    "contactTitle": "Une question, un partenariat, un événement ?",
+    "fabCalloutTitle": "Une pièce à fabriquer ou à concevoir ?",
+    "fabCalloutText": "Impression 3D, découpe laser, CAO, électronique ou conseil : la demande de fabrication vous donne une estimation immédiate et un suivi jusqu’au retrait.",
+    "fabCalloutCta": "Demande de fabrication",
+    "fabHint": "Pour faire fabriquer ou concevoir une pièce, passez plutôt par la"
   },
   "form": {
     "name": "Nom",
@@ -188,6 +192,33 @@
       "externe": "Externe / entreprise"
     },
     "tierLabel": "Votre profil",
+    "profileLabel": "Qui êtes-vous ?",
+    "profiles": {
+      "etudiant_cotisant": "Étudiant de CentraleSupélec cotisant",
+      "etudiant_non_cotisant": "Étudiant de CentraleSupélec non cotisant",
+      "personnel_interne": "Personnel interne à CentraleSupélec",
+      "entreprise_collectivite": "Entreprises, collectivités, organisations…",
+      "autre": "Autre"
+    },
+    "fullPrice": "Plein tarif",
+    "profileOther": "Veuillez préciser votre profil",
+    "profileOtherPlaceholder": "Ex : ancien élève, partenaire…",
+    "frameLabel": "Dans quel cadre est votre projet ?",
+    "framePlaceholder": "— Choisir le cadre —",
+    "frames": {
+      "eleves": "Projet entre élèves",
+      "academique": "Projet académique",
+      "associatif": "Projet associatif",
+      "personnel": "Projet personnel",
+      "externe": "Prestation externe (entreprises, associations…)",
+      "autre": "Autre"
+    },
+    "associationName": "Pour quelle association / club de CS ?",
+    "associationPlaceholder": "Ex : BDE, FabriCS, Club Robotique…",
+    "frameOther": "Précisez le cadre de votre projet",
+    "frameOtherPlaceholder": "Précisez le contexte…",
+    "serviceOther": "Précisez le service ou conseil souhaité",
+    "serviceOtherPlaceholder": "Décrivez succinctement votre besoin…",
     "phone": "Téléphone",
     "organization": "Structure / équipe",
     "drop": "Déposez votre fichier ici ou",

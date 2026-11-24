@@ -64,6 +64,11 @@ export function notifyTeam(request) {
     `Référence : ${request.reference}`,
     `Service : ${request.service_key}`,
     `Demandeur : ${request.name} <${request.email}> (${request.tier})`,
+    request.profile ? `Profil : ${request.profile}${request.profile_other ? ` — ${request.profile_other}` : ''}` : null,
+    request.project_frame
+      ? `Cadre : ${request.project_frame}${request.frame_other ? ` — ${request.frame_other}` : ''}${request.association_name ? ` (${request.association_name})` : ''}`
+      : null,
+    request.service_other ? `Besoin : ${request.service_other}` : null,
     request.organization ? `Structure : ${request.organization}` : null,
     request.file_name ? `Fichier : ${request.file_name}` : null,
     request.estimate_eur ? `Estimation : ${request.estimate_eur} €` : null,

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useLocation, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
@@ -8,6 +8,8 @@ import {
   faHandHoldingHeart,
   faPaperPlane,
   faCheck,
+  faCube,
+  faArrowRight,
 } from '@fortawesome/free-solid-svg-icons';
 import { useLang } from '../hooks/useLang';
 import { api } from '../api/client';
@@ -19,7 +21,7 @@ const INTENTIONS = ['construire', 'apprendre', 'transmettre', 'rayonner', 'autre
 
 function ContactForm() {
   const { t } = useTranslation();
-  const { lang } = useLang();
+  const { lang, to } = useLang();
   const [params] = useSearchParams();
   const preset = params.get('intention');
   const empty = { name: '', email: '', intention: INTENTIONS.includes(preset) ? preset : 'construire', message: '', website: '' };
@@ -66,6 +68,11 @@ function ContactForm() {
             </option>
           ))}
         </select>
+        {form.intention === 'construire' && (
+          <p className="muted small field-hint">
+            {t('join.fabHint')} <Link to={to('/fabrication')}>{t('join.fabCalloutCta').toLowerCase()}</Link>.
+          </p>
+        )}
       </div>
       <div className="field">
         <label htmlFor="message">{t('form.message')}</label>
@@ -104,6 +111,27 @@ function ContactForm() {
         </button>
       </div>
     </form>
+  );
+}
+
+// Fabrication requests have their own form (profile, file, estimate, tracking): send people there.
+function FabricationCallout() {
+  const { t } = useTranslation();
+  const { to } = useLang();
+  return (
+    <div className="callout">
+      <span className="callout__icon" aria-hidden="true">
+        <FontAwesomeIcon icon={faCube} />
+      </span>
+      <div className="callout__body">
+        <strong>{t('join.fabCalloutTitle')}</strong>
+        <p className="muted small">{t('join.fabCalloutText')}</p>
+      </div>
+      <Link to={to('/fabrication')} className="btn btn--primary btn--sm">
+        {t('join.fabCalloutCta')}
+        <FontAwesomeIcon icon={faArrowRight} />
+      </Link>
+    </div>
   );
 }
 
@@ -158,6 +186,7 @@ export default function Join() {
             <h2 className="headline">{t('join.contactTitle')}</h2>
           </Reveal>
           <Reveal className="panel" delay={100}>
+            <FabricationCallout />
             <ContactForm />
           </Reveal>
         </div>

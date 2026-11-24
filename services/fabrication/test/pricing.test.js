@@ -40,3 +40,15 @@ test('quote totals apply the tier discount', () => {
   const q = quoteTotals([{ label: 'a', amount: 40 }, { label: 'b', amount: 20 }], 0.25);
   assert.deepEqual(q, { gross: 60, discount_rate: 0.25, discount: 15, total: 45 });
 });
+
+test('tierFor: price tier from the profile and the project frame', async () => {
+  const { tierFor } = await import('../src/pricing.js');
+  assert.equal(tierFor('etudiant_cotisant', 'personnel'), 'etudiant');
+  assert.equal(tierFor('etudiant_cotisant', 'associatif'), 'etudiant');
+  assert.equal(tierFor('etudiant_non_cotisant', 'associatif'), 'association');
+  assert.equal(tierFor('personnel_interne', 'associatif'), 'association');
+  assert.equal(tierFor('etudiant_non_cotisant', 'personnel'), 'externe');
+  assert.equal(tierFor('autre', 'eleves'), 'externe');
+  assert.equal(tierFor('entreprise_collectivite', 'associatif'), 'externe');
+  assert.equal(tierFor('entreprise_collectivite', null), 'externe');
+});

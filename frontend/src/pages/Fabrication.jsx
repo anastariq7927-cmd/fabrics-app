@@ -13,9 +13,6 @@ import {
   faPlus,
   faPaperPlane,
   faShieldHalved,
-  faGraduationCap,
-  faPeopleGroup,
-  faBuilding,
   faCalculator,
   faClock,
 } from '@fortawesome/free-solid-svg-icons';
@@ -27,13 +24,8 @@ import Reveal from '../components/Reveal';
 import { LoadState, PageHead } from '../components/Blocks';
 import ModelViewer from '../fabrication/ModelViewer';
 import { loadGeometry, measure, PREVIEWABLE } from '../fabrication/analyzeMesh';
-import { estimate, formatEUR, formatBytes } from '../fabrication/pricing';
+import { estimate, formatEUR, formatBytes, tierFor, PROFILES, FRAMES } from '../fabrication/pricing';
 
-const TIERS = [
-  { key: 'etudiant', icon: faGraduationCap },
-  { key: 'association', icon: faPeopleGroup },
-  { key: 'externe', icon: faBuilding },
-];
 const INFILLS = [15, 25, 50, 100];
 const LAYERS = ['0.12', '0.20', '0.28'];
 const FILE_REQUIRED = ['impression-3d', 'laser'];
@@ -281,7 +273,12 @@ function Success({ result, onReset }) {
 }
 
 const emptyForm = {
-  tier: 'etudiant',
+  profile: '',
+  profileOther: '',
+  frame: '',
+  frameOther: '',
+  associationName: '',
+  serviceOther: '',
   name: '',
   email: '',
   phone: '',
@@ -313,7 +310,10 @@ export default function Fabrication() {
   const service = data?.services.find((s) => s.key === serviceKey) ?? data?.services[0];
   const materials = useMemo(() => data?.materials.filter((m) => m.service === service?.key) ?? [], [data, service]);
   const material = materials.find((m) => m.key === form.materialKey) ?? null;
-  const discountRate = Number(data?.settings.discounts[form.tier] ?? 0);
+  const isCompany = form.profile === 'entreprise_collectivite';
+  // Same rule as the server, which recomputes it on submit.
+  const tier = tierFor(form.profile, isCompany ? null : form.frame);
+  const discountRate = Number(data?.settings.discounts[tier] ?? 0);
 
   const set = (key, value) => setForm((f) => ({ ...f, [key]: value }));
 
@@ -376,6 +376,11 @@ export default function Fabrication() {
 
   async function send() {
     const missing = [];
+    if (!form.profile) missing.push(t('fab.profileLabel'));
+    if (form.profile === 'autre' && !form.profileOther.trim()) missing.push(t('fab.profileOther'));
+    if (!isCompany && !form.frame) missing.push(t('fab.frameLabel'));
+    if (!isCompany && form.frame === 'autre' && !form.frameOther.trim()) missing.push(t('fab.frameOther'));
+    if (service.key === 'conseil' && !form.serviceOther.trim()) missing.push(t('fab.serviceOther'));
     if (!form.name.trim()) missing.push(t('form.name'));
     if (!/^\S+@\S+\.\S+$/.test(form.email)) missing.push(t('form.email'));
     if (FILE_REQUIRED.includes(service.key) && !file) missing.push(t('fab.steps.file'));
@@ -384,7 +389,12 @@ export default function Fabrication() {
 
     const payload = {
       service_key: service.key,
-      tier: form.tier,
+      profile: form.profile,
+      profile_other: form.profile === 'autre' ? form.profileOther : '',
+      project_frame: isCompany ? null : form.frame,
+      frame_other: !isCompany && form.frame === 'autre' ? form.frameOther : '',
+      association_name: !isCompany && form.frame === 'associatif' ? form.associationName : '',
+      service_other: service.key === 'conseil' ? form.serviceOther : '',
       name: form.name,
       email: form.email,
       phone: form.phone,
@@ -449,24 +459,79 @@ export default function Fabrication() {
                       <div className="fab-layout__main">
                         <StepPanel n={1} title={t('fab.steps.identity')}>
                           <div className="field">
-                            <label>{t('fab.tierLabel')}</label>
-                            <div className="segmented segmented--3">
-                              {TIERS.map((tier) => (
-                                <button
-                                  key={tier.key}
-                                  type="button"
-                                  aria-pressed={form.tier === tier.key}
-                                  onClick={() => set('tier', tier.key)}
-                                >
-                                  <FontAwesomeIcon icon={tier.icon} />
-                                  {t(`fab.tiers.${tier.key}`)}
-                                  {data.settings.discounts[tier.key] > 0 && (
-                                    <span className="badge">−{Math.round(data.settings.discounts[tier.key] * 100)} %</span>
-                                  )}
-                                </button>
-                              ))}
+                            <label>{t('fab.profileLabel')} *</label>
+                            <div className="choice-grid choice-grid--profiles">
+                              {PROFILES.map((p) => {
+                                const rate = Number(data.settings.discounts[tierFor(p, p === 'entreprise_collectivite' ? null : form.frame)] ?? 0);
+                                return (
+                                  <button
+                                    key={p}
+                                    type="button"
+                                    aria-pressed={form.profile === p}
+                                    className="choice"
+                                    onClick={() => set('profile', p)}
+                                  >
+                                    <strong>{t(`fab.profiles.${p}`)}</strong>
+                                    <span className="muted small">{rate > 0 ? `−${Math.round(rate * 100)} %` : t('fab.fullPrice')}</span>
+                                  </button>
+                                );
+                              })}
                             </div>
                           </div>
+                          {form.profile === 'autre' && (
+                            <div className="field">
+                              <label htmlFor="fab-profile-other">{t('fab.profileOther')} *</label>
+                              <input
+                                id="fab-profile-other"
+                                className="input"
+                                maxLength={160}
+                                placeholder={t('fab.profileOtherPlaceholder')}
+                                value={form.profileOther}
+                                onChange={(e) => set('profileOther', e.target.value)}
+                              />
+                            </div>
+                          )}
+                          {!isCompany && (
+                            <div className="form-row">
+                              <div className="field">
+                                <label htmlFor="fab-frame">{t('fab.frameLabel')} *</label>
+                                <select id="fab-frame" className="input" value={form.frame} onChange={(e) => set('frame', e.target.value)}>
+                                  <option value="">{t('fab.framePlaceholder')}</option>
+                                  {FRAMES.map((f) => (
+                                    <option key={f} value={f}>
+                                      {t(`fab.frames.${f}`)}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                              {form.frame === 'associatif' && (
+                                <div className="field">
+                                  <label htmlFor="fab-asso">{t('fab.associationName')}</label>
+                                  <input
+                                    id="fab-asso"
+                                    className="input"
+                                    maxLength={160}
+                                    placeholder={t('fab.associationPlaceholder')}
+                                    value={form.associationName}
+                                    onChange={(e) => set('associationName', e.target.value)}
+                                  />
+                                </div>
+                              )}
+                              {form.frame === 'autre' && (
+                                <div className="field">
+                                  <label htmlFor="fab-frame-other">{t('fab.frameOther')} *</label>
+                                  <input
+                                    id="fab-frame-other"
+                                    className="input"
+                                    maxLength={300}
+                                    placeholder={t('fab.frameOtherPlaceholder')}
+                                    value={form.frameOther}
+                                    onChange={(e) => set('frameOther', e.target.value)}
+                                  />
+                                </div>
+                              )}
+                            </div>
+                          )}
                           <div className="form-row">
                             <div className="field">
                               <label htmlFor="fab-name">{t('form.name')} *</label>
@@ -492,6 +557,19 @@ export default function Fabrication() {
                         </StepPanel>
 
                         <StepPanel n={3} title={t('fab.steps.params')}>
+                          {service.key === 'conseil' && (
+                            <div className="field">
+                              <label htmlFor="fab-service-other">{t('fab.serviceOther')} *</label>
+                              <input
+                                id="fab-service-other"
+                                className="input"
+                                maxLength={300}
+                                placeholder={t('fab.serviceOtherPlaceholder')}
+                                value={form.serviceOther}
+                                onChange={(e) => set('serviceOther', e.target.value)}
+                              />
+                            </div>
+                          )}
                           {materials.length > 0 && (
                             <div className="field">
                               <label>{t('fab.material')}</label>
@@ -624,7 +702,7 @@ export default function Fabrication() {
                       <aside className="fab-layout__side">
                         <EstimatePanel
                           service={service}
-                          tier={form.tier}
+                          tier={tier}
                           est={est}
                           discountRate={discountRate}
                           submitting={submit.state === 'sending'}
