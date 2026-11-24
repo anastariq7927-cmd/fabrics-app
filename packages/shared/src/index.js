@@ -49,6 +49,16 @@ export function supabaseAsUser(accessToken) {
   });
 }
 
+// Links built by supabase-js start with SUPABASE_URL. On a self-hosted server that is the internal
+// gateway (http://supabase-api:8000), which browsers cannot reach, so links handed to the browser
+// are rewritten to SUPABASE_PUBLIC_URL (proxied by Caddy). Unchanged when it is not set.
+export function toPublicSupabaseUrl(url) {
+  const publicBase = process.env.SUPABASE_PUBLIC_URL?.replace(/\/+$/, '');
+  const internalBase = process.env.SUPABASE_URL?.replace(/\/+$/, '');
+  if (!url || !publicBase || !internalBase || publicBase === internalBase) return url;
+  return url.startsWith(internalBase) ? publicBase + url.slice(internalBase.length) : url;
+}
+
 export function bearerToken(req) {
   const header = req.headers.authorization ?? '';
   return header.startsWith('Bearer ') ? header.slice(7) : null;

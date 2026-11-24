@@ -9,6 +9,16 @@
 		reverse_proxy gateway:4000
 	}
 
+	# Self-hosted Supabase (SUPABASE_UPSTREAM, set in docker-compose.prod.yml). Only what the
+	# browser needs is public: admin login and the short-lived signed links to uploaded files.
+	# The REST API and the rest of Storage stay reachable only from the internal network.
+	handle /auth/v1/* {
+		reverse_proxy {$SUPABASE_UPSTREAM}
+	}
+	handle /storage/v1/object/sign/* {
+		reverse_proxy {$SUPABASE_UPSTREAM}
+	}
+
 	# Frontend: hashed assets are immutable, everything else falls back to index.html (SPA routes).
 	handle {
 		root * /srv

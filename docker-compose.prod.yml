@@ -2,18 +2,38 @@
 #   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 # Caddy is the only public entry point: it serves the built frontend (web/) and proxies
 # /api to the gateway, with automatic HTTPS for $DOMAIN.
+#
+# The database is a self-hosted Supabase stack on the same server (scripts/deploy.sh supabase).
+# Its API gateway joins the external network "fabrics_net" as supabase-api, so the services
+# that talk to Supabase, and Caddy, join it too.
+x-supabase-net: &supabase-net
+  networks: [default, supabase]
+
 services:
   gateway:
+    <<: *supabase-net
     # Not exposed on the host any more; Caddy reaches it on the internal network.
     ports: !reset []
 
+  content:
+    <<: *supabase-net
+
+  contact:
+    <<: *supabase-net
+
+  fabrication:
+    <<: *supabase-net
+
   web:
+    <<: *supabase-net
     image: caddy:2.8-alpine
     restart: unless-stopped
     depends_on: [gateway]
     environment:
       # Empty or missing DOMAIN → plain HTTP on :80 (Caddy's own {$VAR:default} ignores empty values).
       SITE_ADDRESS: ${DOMAIN:-:80}
+      # Supabase API gateway: browser login (/auth/v1) and signed file links (/storage/v1/object/sign).
+      SUPABASE_UPSTREAM: ${SUPABASE_UPSTREAM:-supabase-api:8000}
     ports:
       - "80:80"
       - "443:443"
@@ -23,6 +43,11 @@ services:
       - ./web:/srv:ro
       - caddy_data:/data
       - caddy_config:/config
+
+networks:
+  supabase:
+    name: ${FABRICS_NETWORK:-fabrics_net}
+    external: true
 
 volumes:
   caddy_data:

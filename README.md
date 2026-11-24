@@ -101,11 +101,13 @@ Serve para qualquer servidor Linux com acesso SSH por chave (Ubuntu/Debian recom
 - encaminha `/api` para o gateway;
 - emite o certificado HTTPS sozinho.
 
-Os microserviços rodam em Docker, na rede interna.
+Os microserviços e o banco (Supabase self-hosted, com PostgreSQL local) rodam em Docker, na rede interna.
 
 ```
-Internet ─▶ Caddy :443 ─┬─ /        → frontend (web/)
-                        └─ /api/*   → gateway ─▶ content · contact · email · fabrication
+Internet ─▶ Caddy :443 ─┬─ /                          → frontend (web/)
+                        ├─ /api/*                     → gateway ─▶ content · contact · email · fabrication
+                        └─ /auth/v1/*, /storage/v1/object/sign/*  → Supabase (login admin, downloads)
+                                                         Supabase: PostgreSQL · Auth · REST · Storage
 ```
 
 1. Aponte o domínio (registro A/AAAA) para o IP do servidor e garanta que `ssh usuario@servidor` entra sem senha (`ssh-copy-id usuario@servidor`).
@@ -117,18 +119,27 @@ Internet ─▶ Caddy :443 ─┬─ /        → frontend (web/)
    ```bash
    bash scripts/deploy.sh setup
    ```
-4. Publique:
+4. Instale o banco local (Supabase self-hosted em `/opt/supabase`):
+   ```bash
+   bash scripts/deploy.sh supabase
+   ```
+   Gera as chaves em `.env.supabase`, sobe PostgreSQL + Auth + REST + Storage, aplica `supabase/migrations/` e aponta o `.env.production` para esse banco.
+5. Crie o primeiro admin (a senha é pedida no terminal):
+   ```bash
+   bash scripts/deploy.sh admin voce@exemplo.com
+   ```
+6. Publique:
    ```bash
    bash scripts/deploy.sh
    ```
-   - Na primeira vez, o script cria o `.env.production` a partir do seu `.env`, já com as URLs públicas (`VITE_API_URL=/api`, `PUBLIC_SITE_URL`, `CORS_ORIGINS`). Revise o arquivo, principalmente o SMTP, e rode de novo.
+   - Se o `.env.production` ainda não existir, o script cria a partir do seu `.env`, já com as URLs públicas (`VITE_API_URL=/api`, `PUBLIC_SITE_URL`, `CORS_ORIGINS`). Revise o arquivo, principalmente o SMTP, e rode de novo.
    - A partir daí, cada execução compila o front, envia o código, reconstrói os containers e testa o `/api/health`.
 
-Outros comandos: `bash scripts/deploy.sh status`, `logs [serviço]`, `down` e `ssh`.
+Outros comandos: `bash scripts/deploy.sh status`, `logs [serviço]`, `down`, `ssh`, `migrate` (aplica novas migrations) e `supabase update` (atualiza a versão do Supabase).
 
-O banco continua no Supabase. Mudanças de schema vão por migration em `supabase/migrations/`, não pelo deploy.
+Mudanças de schema vão por migration em `supabase/migrations/` e chegam ao servidor com `bash scripts/deploy.sh migrate`.
 
-`deploy/deploy.env` e `.env.production` ficam fora do git.
+`deploy/deploy.env`, `.env.production` e `.env.supabase` ficam fora do git. Guarde uma cópia do `.env.supabase` num cofre de senhas: ele contém a senha do banco.
 
 ## Estrutura do front-end
 

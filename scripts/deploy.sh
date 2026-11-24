@@ -2,6 +2,9 @@
 # Publishes FabriCS (frontend + microservices) to a Linux server over SSH.
 #
 #   bash scripts/deploy.sh setup     # first time: installs Docker on the server and prepares the folder
+#   bash scripts/deploy.sh supabase  # installs/updates the local Supabase stack (PostgreSQL) + migrations
+#   bash scripts/deploy.sh migrate   # applies supabase/migrations to the server's database
+#   bash scripts/deploy.sh admin EMAIL # creates (or promotes) an admin account
 #   bash scripts/deploy.sh           # build the frontend, upload, (re)start everything, check health
 #   bash scripts/deploy.sh status    # container status on the server
 #   bash scripts/deploy.sh logs [svc]# follow logs (e.g. logs fabrication)
@@ -10,6 +13,7 @@
 #
 # Server settings live in deploy/deploy.env (see deploy/deploy.env.example).
 # Production secrets live in .env.production (never committed); it becomes .env on the server.
+# Supabase secrets live in .env.supabase (never committed); a copy stays on the server.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -18,6 +22,10 @@ cd "$ROOT"
 CMD="${1:-deploy}"
 CONFIG="deploy/deploy.env"
 PROD_ENV=".env.production"
+SUPA_ENV=".env.supabase"
+NETWORK="fabrics_net"
+# Name of the Supabase API gateway on $NETWORK (alias set in deploy/supabase/docker-compose.fabrics.yml).
+SUPABASE_INTERNAL_URL="http://supabase-api:8000"
 COMPOSE="docker compose -f docker-compose.yml -f docker-compose.prod.yml"
 
 bold() { printf '\033[1m%s\033[0m\n' "$*"; }
@@ -39,10 +47,13 @@ DEPLOY_USER="$(env_value "$CONFIG" DEPLOY_USER)"
 DEPLOY_PORT="$(env_value "$CONFIG" DEPLOY_PORT)"
 DEPLOY_SSH_KEY="$(env_value "$CONFIG" DEPLOY_SSH_KEY)"
 DEPLOY_PATH="$(env_value "$CONFIG" DEPLOY_PATH)"
+SUPABASE_PATH="$(env_value "$CONFIG" SUPABASE_PATH)"
 DOMAIN="$(env_value "$CONFIG" DOMAIN)"
 DEPLOY_USER="${DEPLOY_USER:-root}"
 DEPLOY_PORT="${DEPLOY_PORT:-22}"
 DEPLOY_PATH="${DEPLOY_PATH:-/opt/fabrics}"
+SUPABASE_PATH="${SUPABASE_PATH:-/opt/supabase}"
+SUPA_DIR="$SUPABASE_PATH/docker"
 [ -n "$DEPLOY_HOST" ] || fail "Preencha DEPLOY_HOST em $CONFIG."
 
 SSH_OPTS=(-p "$DEPLOY_PORT" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15)
@@ -62,15 +73,19 @@ check_ssh() {
 }
 
 # .env.production = the local .env with the public URLs of the server. Created once, then yours to edit.
+create_prod_env() {
+  [ -f .env ] || fail "Nem $PROD_ENV nem .env existem. Configure o .env primeiro (bash scripts/start.sh check)."
+  sed -E \
+    -e "s|^PUBLIC_SITE_URL=.*|PUBLIC_SITE_URL=$SITE_URL|" \
+    -e "s|^CORS_ORIGINS=.*|CORS_ORIGINS=$SITE_URL|" \
+    -e "s|^VITE_API_URL=.*|VITE_API_URL=/api|" \
+    .env | tr -d '\r' >"$PROD_ENV"
+  grep -q '^DOMAIN=' "$PROD_ENV" || printf '\n# Domínio servido pelo Caddy (HTTPS automático)\nDOMAIN=%s\n' "$DOMAIN" >>"$PROD_ENV"
+}
+
 prepare_prod_env() {
   if [ ! -f "$PROD_ENV" ]; then
-    [ -f .env ] || fail "Nem $PROD_ENV nem .env existem. Configure o .env primeiro (bash scripts/start.sh check)."
-    sed -E \
-      -e "s|^PUBLIC_SITE_URL=.*|PUBLIC_SITE_URL=$SITE_URL|" \
-      -e "s|^CORS_ORIGINS=.*|CORS_ORIGINS=$SITE_URL|" \
-      -e "s|^VITE_API_URL=.*|VITE_API_URL=/api|" \
-      .env | tr -d '\r' >"$PROD_ENV"
-    grep -q '^DOMAIN=' "$PROD_ENV" || printf '\n# Domínio servido pelo Caddy (HTTPS automático)\nDOMAIN=%s\n' "$DOMAIN" >>"$PROD_ENV"
+    create_prod_env
     fail "Criei $PROD_ENV a partir do .env, com as URLs de $SITE_URL. Revise (SMTP, chaves) e rode de novo."
   fi
   local missing=()
@@ -113,7 +128,8 @@ upload() {
 
 start_remote() {
   bold "Subindo os containers no servidor…"
-  remote "cd '$DEPLOY_PATH' && $SUDO $COMPOSE up -d --build --remove-orphans && $SUDO docker image prune -f >/dev/null"
+  ensure_network
+  remote"cd '$DEPLOY_PATH' && $SUDO $COMPOSE up -d --build --remove-orphans && $SUDO docker image prune -f >/dev/null"
   ok "Containers no ar"
 }
 
@@ -134,7 +150,221 @@ health() {
   fi
 }
 
+# ---------- self-hosted Supabase (the database lives on the server, in Docker) ----------
+
+ensure_network() {
+  remote "$SUDO docker network inspect $NETWORK >/dev/null 2>&1 || $SUDO docker network create $NETWORK >/dev/null"
+}
+
+set_env() { # set_env FILE KEY VALUE — replaces the KEY= line, or appends it
+  local file="$1" key="$2" value="$3" tmp
+  tmp="$(mktemp)"
+  if grep -qE "^$key=" "$file" 2>/dev/null; then
+    awk -v k="$key" -v v="$value" 'index($0, k "=") == 1 { print k "=" v; next } { print }' "$file" >"$tmp"
+  else
+    { cat "$file" 2>/dev/null || true; printf '%s=%s\n' "$key" "$value"; } >"$tmp"
+  fi
+  cat "$tmp" >"$file" && rm -f "$tmp"
+}
+
+rand_hex() { node -e "console.log(require('crypto').randomBytes($1).toString('hex'))"; }
+
+make_jwt() { # make_jwt SECRET ROLE — HS256 key valid for 10 years, as Supabase's own generator does
+  node -e '
+    const crypto = require("crypto");
+    const [secret, role] = process.argv.slice(1);
+    const b64 = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
+    const iat = Math.floor(Date.now() / 1000);
+    const body = b64({ alg: "HS256", typ: "JWT" }) + "." + b64({ role, iss: "supabase", iat, exp: iat + 10 * 365 * 24 * 3600 });
+    console.log(body + "." + crypto.createHmac("sha256", secret).update(body).digest("base64url"));
+  ' "$1" "$2"
+}
+
+# .env.supabase holds the stack's secrets. Generated once; POSTGRES_PASSWORD must never change afterwards.
+prepare_supabase_env() {
+  if [ ! -f "$SUPA_ENV" ]; then
+    if remote "test -f '$SUPA_DIR/.env.fabrics'" 2>/dev/null; then
+      remote "cat '$SUPA_DIR/.env.fabrics'" >"$SUPA_ENV"
+      ok "$SUPA_ENV recuperado do servidor"
+    else
+      command -v node >/dev/null || fail "Node.js é necessário nesta máquina para gerar as chaves."
+      local jwt
+      jwt="$(rand_hex 32)"
+      {
+        printf '# Segredos do Supabase self-hosted (gerados por scripts/deploy.sh). Nunca commitar.\n'
+        printf '# Nunca altere POSTGRES_PASSWORD depois da primeira instalação.\n'
+        printf 'POSTGRES_PASSWORD=%s\n' "$(rand_hex 24)"
+        printf 'JWT_SECRET=%s\n' "$jwt"
+        printf 'ANON_KEY=%s\n' "$(make_jwt "$jwt" anon)"
+        printf 'SERVICE_ROLE_KEY=%s\n' "$(make_jwt "$jwt" service_role)"
+        printf 'DASHBOARD_USERNAME=admin\n'
+        printf 'DASHBOARD_PASSWORD=%s\n' "$(rand_hex 16)"
+        printf 'SECRET_KEY_BASE=%s\n' "$(rand_hex 48)"
+        printf 'REALTIME_DB_ENC_KEY=%s\n' "$(rand_hex 8)"
+        printf 'VAULT_ENC_KEY=%s\n' "$(rand_hex 16)"
+        printf 'PG_META_CRYPTO_KEY=%s\n' "$(rand_hex 24)"
+        printf 'LOGFLARE_PUBLIC_ACCESS_TOKEN=%s\n' "$(rand_hex 24)"
+        printf 'LOGFLARE_PRIVATE_ACCESS_TOKEN=%s\n' "$(rand_hex 24)"
+        printf 'S3_PROTOCOL_ACCESS_KEY_ID=%s\n' "$(rand_hex 16)"
+        printf 'S3_PROTOCOL_ACCESS_KEY_SECRET=%s\n' "$(rand_hex 32)"
+        printf 'POOLER_TENANT_ID=fabrics\n'
+      } >"$SUPA_ENV"
+      chmod 600 "$SUPA_ENV"
+      ok "Chaves do Supabase geradas em $SUPA_ENV (guarde uma cópia num cofre de senhas)"
+    fi
+  fi
+  # Settings that follow deploy/deploy.env; rewritten on every run.
+  set_env "$SUPA_ENV" COMPOSE_FILE "docker-compose.yml:docker-compose.fabrics.yml"
+  set_env "$SUPA_ENV" FABRICS_NETWORK "$NETWORK"
+  set_env "$SUPA_ENV" SITE_URL "$SITE_URL"
+  set_env "$SUPA_ENV" SUPABASE_PUBLIC_URL "$SITE_URL"
+  set_env "$SUPA_ENV" API_EXTERNAL_URL "$SITE_URL/auth/v1"
+  set_env "$SUPA_ENV" DISABLE_SIGNUP true
+  set_env "$SUPA_ENV" ENABLE_PHONE_SIGNUP false
+  set_env "$SUPA_ENV" ENABLE_ANONYMOUS_USERS false
+  set_env "$SUPA_ENV" STUDIO_DEFAULT_ORGANIZATION FabriCS
+  set_env "$SUPA_ENV" STUDIO_DEFAULT_PROJECT FabriCS
+  ok "$SUPA_ENV pronto"
+}
+
+install_supabase() { # install_supabase [update]
+  bold "Supabase self-hosted em $TARGET:$SUPABASE_PATH…"
+  remote "command -v git >/dev/null" || remote "$SUDO apt-get update -qq && $SUDO apt-get install -y -qq git" ||
+    fail "Instale o git no servidor."
+  if ! remote "test -f '$SUPA_DIR/docker-compose.yml'"; then
+    remote "$SUDO mkdir -p '$SUPABASE_PATH' && $SUDO chown \$(id -u):\$(id -g) '$SUPABASE_PATH' &&
+      git clone -q --depth 1 --filter=blob:none --sparse https://github.com/supabase/supabase.git '$SUPABASE_PATH' &&
+      cd '$SUPABASE_PATH' && git sparse-checkout set docker"
+    ok "Configuração oficial baixada (supabase/supabase, pasta docker/)"
+  elif [ "${1:-}" = "update" ]; then
+    remote "cd '$SUPABASE_PATH' && git pull -q --ff-only"
+    ok "Configuração oficial atualizada"
+  fi
+
+  remote "cat > '$SUPA_DIR/docker-compose.fabrics.yml'" <deploy/supabase/docker-compose.fabrics.yml
+  tr -d '\r' <"$SUPA_ENV" | remote "umask 077 && cat > '$SUPA_DIR/.env.fabrics'"
+  # .env = the official .env.example with our values on top (same keys replaced, new keys appended).
+  remote "cd '$SUPA_DIR' && umask 077 && awk -f /dev/stdin .env.fabrics .env.example > .env" <<'AWK'
+NR == FNR {
+  if (match($0, /^[A-Za-z_][A-Za-z0-9_]*=/)) { key = substr($0, 1, RLENGTH - 1); ours[key] = $0 }
+  next
+}
+match($0, /^[A-Za-z_][A-Za-z0-9_]*=/) {
+  key = substr($0, 1, RLENGTH - 1)
+  if (key in ours) { print ours[key]; done[key] = 1; next }
+}
+{ print }
+END { for (key in ours) if (!(key in done)) print ours[key] }
+AWK
+  ok "Configuração enviada (.env e docker-compose.fabrics.yml)"
+
+  ensure_network
+  remote "cd '$SUPA_DIR' && $SUDO docker compose pull -q && $SUDO docker compose up -d"
+  ok "Containers do Supabase iniciados"
+}
+
+db_sql() { # db_sql "SQL" — runs SQL in the server's database (password stays inside the container)
+  printf '%s\n' "$1" |
+    remote "$SUDO docker exec -i supabase-db sh -c 'PGPASSWORD=\"\$POSTGRES_PASSWORD\" psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -tA'"
+}
+
+wait_supabase() {
+  printf '  aguardando o banco, o Auth e o Storage'
+  for _ in $(seq 1 60); do
+    if [ "$(db_sql "select (to_regclass('auth.users') is not null and to_regclass('storage.buckets') is not null)::int;" 2>/dev/null | tr -d '[:space:]')" = "1" ]; then
+      printf '\n'
+      ok "Supabase pronto"
+      return 0
+    fi
+    printf '.'
+    sleep 5
+  done
+  printf '\n'
+  fail "O Supabase não ficou pronto em 5 minutos. Veja os logs: ssh $TARGET 'cd $SUPA_DIR && docker compose logs --tail=50'"
+}
+
+# Applies supabase/migrations with the Supabase CLI, through an SSH tunnel to 127.0.0.1:5432 on the server.
+migrate() {
+  bold "Aplicando supabase/migrations no banco do servidor…"
+  command -v npx >/dev/null || fail "npx (Node.js) é necessário nesta máquina para aplicar as migrations."
+  [ -f "$SUPA_ENV" ] || fail "$SUPA_ENV não existe. Rode antes: bash scripts/deploy.sh supabase"
+  local pass port=54329 tunnel status=0
+  pass="$(env_value "$SUPA_ENV" POSTGRES_PASSWORD)"
+  ssh "${SSH_OPTS[@]}" -N -o ExitOnForwardFailure=yes -L "$port:127.0.0.1:5432" "$TARGET" &
+  tunnel=$!
+  for _ in $(seq 1 20); do
+    (exec 3<>"/dev/tcp/127.0.0.1/$port") 2>/dev/null && break
+    sleep 0.5
+  done
+  npx --yes supabase db push --yes --db-url "postgresql://postgres:$pass@127.0.0.1:$port/postgres" || status=$?
+  kill "$tunnel" 2>/dev/null || true
+  wait "$tunnel" 2>/dev/null || true
+  [ "$status" -eq 0 ] || fail "As migrations falharam (veja a mensagem acima)."
+  ok "Migrations aplicadas"
+}
+
+# Points .env.production at the local stack (internal URL for the services, public URL for the browser).
+link_prod_env() {
+  [ -f "$PROD_ENV" ] || create_prod_env
+  local anon service
+  anon="$(env_value "$SUPA_ENV" ANON_KEY)"
+  service="$(env_value "$SUPA_ENV" SERVICE_ROLE_KEY)"
+  set_env "$PROD_ENV" SUPABASE_URL "$SUPABASE_INTERNAL_URL"
+  set_env "$PROD_ENV" SUPABASE_PUBLIC_URL "$SITE_URL"
+  set_env "$PROD_ENV" SUPABASE_PUBLISHABLE_KEY "$anon"
+  set_env "$PROD_ENV" SUPABASE_SERVICE_ROLE_KEY "$service"
+  set_env "$PROD_ENV" VITE_SUPABASE_URL "$SITE_URL"
+  set_env "$PROD_ENV" VITE_SUPABASE_PUBLISHABLE_KEY "$anon"
+  ok "$PROD_ENV apontando para o Supabase do servidor"
+}
+
+create_admin() { # create_admin EMAIL — the password is asked here and sent over stdin only
+  local email="${1:-}" password password2 code
+  [[ "$email" =~ ^[^@\'[:space:]]+@[^@\'[:space:]]+$ ]] || fail "Uso: bash scripts/deploy.sh admin email@exemplo.com"
+  email="$(printf '%s' "$email" | tr '[:upper:]' '[:lower:]')"
+  read -rsp "  Senha para $email (mín. 8 caracteres): " password && printf '\n'
+  read -rsp "  Repita a senha: " password2 && printf '\n'
+  [ "$password" = "$password2" ] || fail "As senhas não conferem."
+  [ ${#password} -ge 8 ] || fail "Senha curta demais."
+  code="$(EMAIL="$email" PASSWORD="$password" node -e \
+    'console.log(JSON.stringify({ email: process.env.EMAIL, password: process.env.PASSWORD, email_confirm: true }))' |
+    remote "key=\$(grep '^SERVICE_ROLE_KEY=' '$SUPA_DIR/.env' | cut -d= -f2-) &&
+      curl -sS -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8000/auth/v1/admin/users \
+        -H 'Content-Type: application/json' -H \"apikey: \$key\" -H \"Authorization: Bearer \$key\" --data-binary @-")"
+  case "$code" in
+    200 | 201) ok "Conta $email criada" ;;
+    422) ok "Conta $email já existia (a senha não foi alterada)" ;;
+    *) fail "O Auth respondeu HTTP $code ao criar a conta. Veja: bash scripts/deploy.sh ssh → cd $SUPA_DIR && docker compose logs auth" ;;
+  esac
+  [ "$(db_sql "insert into public.admins (user_id) select id from auth.users where email = '$email' on conflict do nothing;
+    select count(*) from public.admins a join auth.users u on u.id = a.user_id where u.email = '$email';" | tail -n1 | tr -d '[:space:]')" = "1" ] ||
+    fail "Não consegui registrar $email em public.admins."
+  ok "$email é administrador. Entre em $SITE_URL/admin"
+}
+
 case "$CMD" in
+  supabase)
+    bold "Banco local (Supabase self-hosted) → $TARGET"
+    check_ssh
+    remote "command -v docker >/dev/null" || fail "Docker não está instalado no servidor. Rode antes: bash scripts/deploy.sh setup"
+    prepare_supabase_env
+    install_supabase "${2:-}"
+    wait_supabase
+    migrate
+    link_prod_env
+    bold "Supabase pronto."
+    printf '  Studio (console do banco): ssh -N -L 8000:127.0.0.1:8000 %s → http://localhost:8000\n' "$TARGET"
+    printf '  Usuário e senha do Studio: DASHBOARD_USERNAME / DASHBOARD_PASSWORD em %s\n' "$SUPA_ENV"
+    printf '  Próximos passos: bash scripts/deploy.sh admin voce@exemplo.com  e  bash scripts/deploy.sh\n'
+    ;;
+  migrate)
+    check_ssh
+    migrate
+    ;;
+  admin)
+    check_ssh
+    create_admin "${2:-}"
+    ;;
   setup)
     bold "Preparando $TARGET"
     check_ssh
@@ -163,5 +393,5 @@ case "$CMD" in
   logs) remote "cd '$DEPLOY_PATH' && $SUDO $COMPOSE logs -f --tail=100 ${2:-}" ;;
   down) remote "cd '$DEPLOY_PATH' && $SUDO $COMPOSE down" && ok "Site parado no servidor" ;;
   ssh) ssh -t "${SSH_OPTS[@]}" "$TARGET" "cd '$DEPLOY_PATH' 2>/dev/null; exec \$SHELL -l" ;;
-  *) sed -n '2,13p' "$0"; exit 1 ;;
+  *) sed -n '2,16p' "$0"; exit 1 ;;
 esac

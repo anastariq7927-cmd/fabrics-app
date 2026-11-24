@@ -2,7 +2,7 @@
 // RLS (private.is_admin()) stays the final guard.
 import { Router } from 'express';
 import { z } from 'zod';
-import { asyncHandler, validate, supabaseAsUser, bearerToken, HttpError } from '@fabrics/shared';
+import { asyncHandler, validate, supabaseAsUser, bearerToken, HttpError, toPublicSupabaseUrl } from '@fabrics/shared';
 import { loadCatalog } from './catalog.js';
 import { quoteTotals } from './pricing.js';
 import { notifyClient } from './notify.js';
@@ -77,7 +77,7 @@ adminRouter.get(
     let fileUrl = null;
     if (request.file_path) {
       const { data, error } = await req.db.storage.from(BUCKET).createSignedUrl(request.file_path, 600);
-      if (!error) fileUrl = data.signedUrl;
+      if (!error) fileUrl = toPublicSupabaseUrl(data.signedUrl);
     }
     res.json({ ...request, events, fileUrl });
   }),
