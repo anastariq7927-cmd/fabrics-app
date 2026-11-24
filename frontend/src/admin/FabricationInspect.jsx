@@ -454,6 +454,17 @@ export default function FabricationInspect({ token }) {
                 </h2>
                 <SpecGrid
                   items={[
+                    {
+                      label: t('fab.profileLabel'),
+                      value: r.profile ? `${t(`fab.profiles.${r.profile}`)}${r.profile_other ? ` — ${r.profile_other}` : ''}` : null,
+                    },
+                    {
+                      label: t('fab.frameLabel'),
+                      value: r.project_frame
+                        ? `${t(`fab.frames.${r.project_frame}`)}${r.frame_other ? ` — ${r.frame_other}` : ''}${r.association_name ? ` (${r.association_name})` : ''}`
+                        : null,
+                    },
+                    { label: t('fab.serviceOther'), value: r.service_other },
                     { label: t('form.email'), value: <a href={`mailto:${r.email}`}>{r.email}</a> },
                     { label: t('fab.phone'), value: r.phone },
                     { label: t('fab.organization'), value: r.organization },

@@ -11,6 +11,7 @@ import {
   faCube,
   faCrosshairs,
   faCompassDrafting,
+  faLightbulb,
 } from '@fortawesome/free-solid-svg-icons';
 
 // Icons referenced by name from the database (intentions.icon, projects.pillars[].icon, fab_services.icon).
@@ -25,6 +26,7 @@ const BY_NAME = {
   cube: faCube,
   crosshairs: faCrosshairs,
   'compass-drafting': faCompassDrafting,
+  lightbulb: faLightbulb,
 };
 
 export default function Icon({ name, ...props }) {

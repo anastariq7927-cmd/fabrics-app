@@ -26,3 +26,13 @@ export const formatEUR = (n, lang = 'fr') =>
 
 export const formatBytes = (n) =>
   n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : n >= 1024 ? `${Math.round(n / 1024)} KB` : `${n} B`;
+
+// Mirrors services/fabrication/src/pricing.js (the server recomputes the tier on submit).
+export const PROFILES = ['etudiant_cotisant', 'etudiant_non_cotisant', 'personnel_interne', 'entreprise_collectivite', 'autre'];
+export const FRAMES = ['eleves', 'academique', 'associatif', 'personnel', 'externe', 'autre'];
+
+export function tierFor(profile, frame) {
+  if (profile === 'etudiant_cotisant') return 'etudiant';
+  if (profile !== 'entreprise_collectivite' && frame === 'associatif') return 'association';
+  return 'externe';
+}

@@ -1185,6 +1185,49 @@ select.input {
   color: var(--danger);
 }
 
+/* Highlighted pointer to another page, shown above a form. */
+.callout {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 18px;
+  margin-bottom: 28px;
+  border-radius: var(--radius-sm);
+  background: var(--brand-soft);
+}
+.callout__icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--bg-elevated);
+  color: var(--brand-bright);
+}
+.callout__body {
+  flex: 1;
+  min-width: 0;
+}
+.callout__body p {
+  margin: 4px 0 0;
+}
+.callout .btn {
+  flex: none;
+}
+@media (max-width: 640px) {
+  .callout {
+    flex-wrap: wrap;
+  }
+  .callout .btn {
+    width: 100%;
+    justify-content: center;
+  }
+}
+.field-hint {
+  margin: 8px 0 0;
+}
+
 /* ---------- States ---------- */
 .state {
   padding: 48px 0;

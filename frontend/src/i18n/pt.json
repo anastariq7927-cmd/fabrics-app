@@ -93,7 +93,11 @@
       "Acesso privilegiado aos projetos e eventos da FabriCS."
     ],
     "contactEyebrow": "Fale conosco",
-    "contactTitle": "Uma dúvida ou um projeto para propor?"
+    "contactTitle": "Uma dúvida, uma parceria, um evento?",
+    "fabCalloutTitle": "Uma peça para fabricar ou projetar?",
+    "fabCalloutText": "Impressão 3D, corte a laser, CAD, eletrônica ou consultoria: o pedido de fabricação dá uma estimativa imediata e acompanhamento até a retirada.",
+    "fabCalloutCta": "Pedido de fabricação",
+    "fabHint": "Para fabricar ou projetar uma peça, use de preferência o"
   },
   "form": {
     "name": "Nome",
@@ -188,6 +192,33 @@
       "externe": "Externo / empresa"
     },
     "tierLabel": "Seu perfil",
+    "profileLabel": "Quem é você?",
+    "profiles": {
+      "etudiant_cotisant": "Estudante da CentraleSupélec associado",
+      "etudiant_non_cotisant": "Estudante da CentraleSupélec não associado",
+      "personnel_interne": "Funcionário da CentraleSupélec",
+      "entreprise_collectivite": "Empresas, órgãos públicos, organizações…",
+      "autre": "Outro"
+    },
+    "fullPrice": "Preço cheio",
+    "profileOther": "Especifique o seu perfil",
+    "profileOtherPlaceholder": "Ex.: ex-aluno, parceiro…",
+    "frameLabel": "Em que contexto é o seu projeto?",
+    "framePlaceholder": "— Escolha o contexto —",
+    "frames": {
+      "eleves": "Projeto entre alunos",
+      "academique": "Projeto acadêmico",
+      "associatif": "Projeto associativo",
+      "personnel": "Projeto pessoal",
+      "externe": "Prestação externa (empresas, associações…)",
+      "autre": "Outro"
+    },
+    "associationName": "Para qual associação / clube da CS?",
+    "associationPlaceholder": "Ex.: BDE, FabriCS, Clube de Robótica…",
+    "frameOther": "Especifique o contexto do seu projeto",
+    "frameOtherPlaceholder": "Descreva o contexto…",
+    "serviceOther": "Especifique o serviço ou consultoria desejados",
+    "serviceOtherPlaceholder": "Descreva brevemente a sua necessidade…",
     "phone": "Telefone",
     "organization": "Instituição / equipe",
     "drop": "Solte o arquivo aqui ou",

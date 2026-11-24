@@ -38,3 +38,15 @@ export function quoteTotals(lines, discountRate) {
   const discount = gross * discountRate;
   return { gross: round2(gross), discount_rate: discountRate, discount: round2(discount), total: round2(gross - discount) };
 }
+
+// Who is asking and in which setting. frontend/src/fabrication/pricing.js mirrors these.
+export const PROFILES = ['etudiant_cotisant', 'etudiant_non_cotisant', 'personnel_interne', 'entreprise_collectivite', 'autre'];
+export const FRAMES = ['eleves', 'academique', 'associatif', 'personnel', 'externe', 'autre'];
+
+// Price tier from the profile and the project frame: members (cotisants) get the student rate,
+// projects run for a CS association or club get the association rate, everyone else the full rate.
+export function tierFor(profile, frame) {
+  if (profile === 'etudiant_cotisant') return 'etudiant';
+  if (profile !== 'entreprise_collectivite' && frame === 'associatif') return 'association';
+  return 'externe';
+}

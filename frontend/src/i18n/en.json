@@ -93,7 +93,11 @@
       "Privileged access to FabriCS projects and events."
     ],
     "contactEyebrow": "Contact us",
-    "contactTitle": "A question or a project to suggest?"
+    "contactTitle": "A question, a partnership, an event?",
+    "fabCalloutTitle": "A part to make or to design?",
+    "fabCalloutText": "3D printing, laser cutting, CAD, electronics or advice: the fabrication request gives you an instant estimate and tracking until pickup.",
+    "fabCalloutCta": "Fabrication request",
+    "fabHint": "To have a part made or designed, please use the"
   },
   "form": {
     "name": "Name",
@@ -188,6 +192,33 @@
       "externe": "External / company"
     },
     "tierLabel": "Your profile",
+    "profileLabel": "Who are you?",
+    "profiles": {
+      "etudiant_cotisant": "CentraleSupélec student (member)",
+      "etudiant_non_cotisant": "CentraleSupélec student (non-member)",
+      "personnel_interne": "CentraleSupélec staff",
+      "entreprise_collectivite": "Companies, public bodies, organisations…",
+      "autre": "Other"
+    },
+    "fullPrice": "Full price",
+    "profileOther": "Please specify your profile",
+    "profileOtherPlaceholder": "E.g. alumnus, partner…",
+    "frameLabel": "What is the setting of your project?",
+    "framePlaceholder": "— Choose the setting —",
+    "frames": {
+      "eleves": "Project between students",
+      "academique": "Academic project",
+      "associatif": "Association project",
+      "personnel": "Personal project",
+      "externe": "External service (companies, associations…)",
+      "autre": "Other"
+    },
+    "associationName": "For which CS association / club?",
+    "associationPlaceholder": "E.g. BDE, FabriCS, Robotics club…",
+    "frameOther": "Please specify the setting of your project",
+    "frameOtherPlaceholder": "Describe the context…",
+    "serviceOther": "Specify the service or advice you need",
+    "serviceOtherPlaceholder": "Briefly describe your need…",
     "phone": "Phone",
     "organization": "Organisation / team",
     "drop": "Drop your file here or",
