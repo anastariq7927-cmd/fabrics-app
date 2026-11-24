@@ -63,7 +63,7 @@ bash scripts/start.sh stop       # para os containers
 
 Na primeira vez o script cria o `.env` a partir do `.env.example` e diz o que falta preencher. O `INTERNAL_TOKEN` é gerado sozinho. Depois é só abrir http://localhost:5173.
 
-No Windows, rode pelo Git Bash.
+No Windows, rode pelo Git Bash (ou `fabrics.cmd`). No Linux, veja o passo a passo completo em [LINUX.md](LINUX.md).
 
 ### Testar
 
