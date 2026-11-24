@@ -303,6 +303,8 @@ En développement local (`./run.sh`, `./fabrics start`), rien ne change : l'appl
 
 ## 9. Installation pas à pas
 
+> Le guide détaillé, avec toutes les commandes et le dépannage, est dans [DEPLOIEMENT.md](DEPLOIEMENT.md). Ci-dessous, le résumé.
+
 Toutes les commandes `bash scripts/deploy.sh …` se lancent **sur le poste de déploiement**, à la racine du dépôt.
 
 | # | Étape | Commande / action |

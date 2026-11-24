@@ -95,6 +95,7 @@ Sem credenciais SMTP, o serviço de email apenas **registra** a mensagem no cons
 ## Colocar no ar (deploy via SSH)
 
 > Infraestrutura completa do servidor (softwares, esquema, Postgres local com Supabase self-hosted, backups e segurança): [SERVEUR.md](SERVEUR.md).
+> Passo a passo da colocação em produção, do servidor vazio aos backups: [DEPLOIEMENT.md](DEPLOIEMENT.md).
 
 Serve para qualquer servidor Linux com acesso SSH por chave (Ubuntu/Debian recomendados). No servidor, o Caddy é a única porta pública:
 - serve o front já compilado;
